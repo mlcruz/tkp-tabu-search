@@ -30,6 +30,7 @@ struct TabuSearch {
     tkp_instance: TkpInstance,
     neighborhood_size: usize,
     pub cost_benefit: BTreeMap<u32, usize>,
+    pub selected_for_profit_pool: Vec<usize>,
 }
 
 impl TkpInstance {
@@ -61,6 +62,7 @@ impl TabuSearch {
             tkp_instance: tkp_instance.clone(),
             cost_benefit: cost_benefit.collect(),
             neighborhood_size,
+            selected_for_profit_pool: Vec::new(),
         }
     }
 
@@ -97,7 +99,7 @@ impl TabuSearch {
                 .collect();
 
             let feasible_neighbors: Vec<Solution> = neighbors
-                .into_par_iter()
+                .into_iter()
                 .filter(|neighbor| !self.is_tabu(neighbor) && neighbor.is_feasible)
                 .collect();
 
@@ -111,6 +113,8 @@ impl TabuSearch {
                 }
                 self.add_to_tabu_list(current_solution.clone());
             }
+
+            self.selected_for_profit_pool.clear();
         }
 
         best_solution
@@ -123,9 +127,31 @@ impl TabuSearch {
             .cost_benefit
             .iter()
             .rev()
-            .filter(|(_, idx)| !current_solution.selected_orders[**idx])
+            .filter(|(_, idx)| {
+                !current_solution.selected_orders[**idx]
+                    && !self.selected_for_profit_pool.contains(idx)
+            })
+            .filter(|(_, idx)| {
+                // seleciona apenas ordens que não ultrapassam a capacidade
+                let order = &self.tkp_instance.orders[**idx];
+                let mut is_feasible = true;
+
+                for t in order.start..=order.end {
+                    let period_index = (t - 1) as usize;
+
+                    if current_solution.total_demand[period_index] + order.demand
+                        > self.tkp_instance.c
+                    {
+                        is_feasible = false;
+                        break;
+                    }
+                }
+
+                is_feasible
+            })
             .map(|(_, idx)| idx)
-            .take(50)
+            // seleciona uma das 5 melhores opções
+            .take(5)
             .choose(&mut self.tkp_instance.rng);
 
         if selected.is_none() {
@@ -133,25 +159,9 @@ impl TabuSearch {
         }
 
         let selected_idx = selected.unwrap();
-        let selected_order = &self.tkp_instance.orders[*selected_idx];
-
-        // checa se a solução é viável com contexto local para evitar
-        // calcular a demanda total de todos os pedidos futuramente
+        self.selected_for_profit_pool.push(*selected_idx);
 
         let mut neighbor = current_solution.clone();
-
-        neighbor.is_feasible = true;
-
-        for t in selected_order.start..=selected_order.end {
-            let period_index = (t - 1) as usize;
-
-            neighbor.total_demand[period_index] += self.tkp_instance.orders[*selected_idx].demand;
-
-            if neighbor.total_demand[period_index] as u32 > self.tkp_instance.c {
-                neighbor.is_feasible = false;
-                break;
-            }
-        }
 
         neighbor.selected_orders[*selected_idx] = true;
         neighbor.total_profit += self.tkp_instance.orders[*selected_idx].profit as u32;
