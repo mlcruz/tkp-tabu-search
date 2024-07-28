@@ -1,25 +1,31 @@
 mod higgs_solve;
 mod parse;
 mod tabu_search;
-
 fn main() {
+    let seed: u64 = rand::random();
     let instances =
-        parse::TkpInstance::parse_instance_folder(std::path::Path::new("tkp_instances"));
+        parse::TkpInstance::parse_instance_folder(std::path::Path::new("tkp_instances"), seed);
 
     for instance in instances {
+        let mut now = std::time::Instant::now();
+
         let higgs_solution = instance.higgs_solve();
-        let first_line = &instance.orders[0];
-        let last_line = &instance.orders[instance.orders.len() - 1];
         println!(
-            "{}: {} {} {} {}",
-            instance.name, first_line.profit, first_line.demand, first_line.start, first_line.end
+            "{}: HIGHS: {}, time: {}ms",
+            instance.name,
+            higgs_solution,
+            now.elapsed().as_millis()
         );
 
-        println!(
-            "{}: {} {} {} {}",
-            instance.name, last_line.profit, last_line.demand, last_line.start, last_line.end
-        );
+        now = std::time::Instant::now();
 
-        println!("{}: HIGHS: {}", instance.name, higgs_solution);
+        let tabu_solution = instance.tabu_search(50000, 20, 100);
+
+        println!(
+            "{}: TABU: {}, time:{}ms",
+            instance.name,
+            tabu_solution.total_profit,
+            now.elapsed().as_millis()
+        );
     }
 }
