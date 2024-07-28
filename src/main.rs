@@ -7,8 +7,7 @@ fn main() {
         parse::TkpInstance::parse_instance_folder(std::path::Path::new("tkp_instances"));
 
     for instance in instances {
-        println!("{}: {} {}", instance.name, instance.n, instance.c);
-        let higgs_solution = instance.higghs_solve();
+        let higgs_solution = instance.higgs_solve();
         let first_line = &instance.orders[0];
         let last_line = &instance.orders[instance.orders.len() - 1];
         println!(

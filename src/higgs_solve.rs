@@ -3,7 +3,7 @@ use highs::{HighsModelStatus, RowProblem, Sense};
 use crate::parse::TkpInstance;
 
 impl TkpInstance {
-    pub fn higghs_solve(&self) -> f64 {
+    pub fn higgs_solve(&self) -> i32 {
         let mut pb = RowProblem::default();
 
         // X representa uma variavel binaria representando se uma ordem é escolhida ou não
@@ -24,15 +24,25 @@ impl TkpInstance {
             let interval_orders: Vec<_> = self
                 .orders
                 .iter()
-                .enumerate()
-                .filter(|(_, order)| order.start <= t && order.end >= t)
-                .map(|(i, order)| (x[i], order.demand as f64))
+                .zip(x.iter())
+                .filter(|(order, _)| order.start <= t && order.end >= t)
+                .map(|(order, x)| (*x, order.demand as f64))
                 .collect();
+
+            // se a some das demandas das ordens ativas em t for menor ou igual a capacidade
+            // não precisamos de restrição (todas as variaveis podem estar ligadas)
+            let sum_demands = interval_orders
+                .iter()
+                .map(|(_, demand)| demand)
+                .sum::<f64>();
+
+            if interval_orders.is_empty() || self.c as f64 >= sum_demands {
+                continue;
+            }
 
             // o bound maximo poderia ser ou a capacidade de t, ou a soma
             // das demandas das ordens ativas em t.
-            let sum_of_demands: f64 = interval_orders.iter().map(|(_, o)| o).sum();
-            pb.add_row(0..=self.c as i32, interval_orders)
+            pb.add_row(0f64..=self.c as f64, interval_orders)
         }
 
         println!(
@@ -40,16 +50,37 @@ impl TkpInstance {
             pb.num_rows(),
             pb.num_cols()
         );
-        // Set the optimization sense to maximize the objective function
-        let solved = pb.optimise(Sense::Maximise).solve();
+
+        let mut model = pb.optimise(Sense::Maximise);
+
+        // usar o solver simplex é significativamente mais rapido
+        model.set_option("presolve", "on");
+        model.set_option("solver", "simplex");
+        model.set_option("parallel", "on");
+
+        let solved = model.solve();
 
         assert_eq!(solved.status(), HighsModelStatus::Optimal);
         let solution = solved.get_solution();
-        let objective_value: f64 = solution
+
+        // escreve arquivo com a solução (para debug)
+        std::fs::write(
+            format!("{}.sol", self.name),
+            solution
+                .columns()
+                .iter()
+                .map(|&val| (val.round() as i32).to_string())
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
+        .unwrap();
+
+        // calcula o valor da solução, somand o lucro das ordens selecionadas
+        let objective_value: i32 = solution
             .columns()
             .iter()
             .enumerate()
-            .map(|(i, &val)| val * self.orders[i].profit as f64)
+            .map(|(i, &val)| (val.round() as i32) * self.orders[i].profit as i32)
             .sum();
 
         return objective_value;
