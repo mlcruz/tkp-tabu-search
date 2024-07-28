@@ -8,13 +8,17 @@ use crate::parse::TkpInstance;
 pub struct Solution {
     pub selected_orders: Vec<bool>,
     pub total_profit: u32,
+    pub is_feasible: bool,
+    total_demand: Vec<u32>,
 }
 
 impl Solution {
-    fn new(size: usize, profit: u32) -> Self {
+    fn new(size: usize, profit: u32, last_order_end: usize) -> Self {
         Self {
             selected_orders: vec![false; size],
             total_profit: profit,
+            is_feasible: true,
+            total_demand: vec![0; last_order_end],
         }
     }
 }
@@ -75,7 +79,16 @@ impl TabuSearch {
     }
 
     pub fn tabu_search(&mut self, iterations: usize) -> Solution {
-        let mut best_solution = Solution::new(self.tkp_instance.orders.len(), 0);
+        let last_order_end = self
+            .tkp_instance
+            .orders
+            .iter()
+            .map(|x| x.end)
+            .max()
+            .unwrap();
+
+        let mut best_solution =
+            Solution::new(self.tkp_instance.orders.len(), 0, last_order_end as usize);
         let mut current_solution = best_solution.clone();
 
         for _ in 0..iterations {
@@ -85,7 +98,7 @@ impl TabuSearch {
 
             let feasible_neighbors: Vec<Solution> = neighbors
                 .into_par_iter()
-                .filter(|neighbor| !self.is_tabu(neighbor) && self.is_feasible(neighbor))
+                .filter(|neighbor| !self.is_tabu(neighbor) && neighbor.is_feasible)
                 .collect();
 
             if let Some(best_neighbor) = feasible_neighbors
@@ -119,10 +132,29 @@ impl TabuSearch {
             return self.generate_random_neighbor(current_solution);
         }
 
-        let selected = selected.unwrap();
+        let selected_idx = selected.unwrap();
+        let selected_order = &self.tkp_instance.orders[*selected_idx];
+
+        // checa se a solução é viável com contexto local para evitar
+        // calcular a demanda total de todos os pedidos futuramente
+
         let mut neighbor = current_solution.clone();
-        neighbor.selected_orders[*selected] = true;
-        neighbor.total_profit += self.tkp_instance.orders[*selected].profit as u32;
+
+        neighbor.is_feasible = true;
+
+        for t in selected_order.start..=selected_order.end {
+            let period_index = (t - 1) as usize;
+
+            neighbor.total_demand[period_index] += self.tkp_instance.orders[*selected_idx].demand;
+
+            if neighbor.total_demand[period_index] as u32 > self.tkp_instance.c {
+                neighbor.is_feasible = false;
+                break;
+            }
+        }
+
+        neighbor.selected_orders[*selected_idx] = true;
+        neighbor.total_profit += self.tkp_instance.orders[*selected_idx].profit as u32;
 
         neighbor
     }
@@ -146,6 +178,20 @@ impl TabuSearch {
         neighbor.selected_orders[idx] = true;
         neighbor.total_profit =
             current_solution.total_profit + self.tkp_instance.orders[idx].profit as u32;
+
+        neighbor.is_feasible = true;
+
+        for t in self.tkp_instance.orders[idx].start..=self.tkp_instance.orders[idx].end {
+            let period_index = (t - 1) as usize;
+
+            neighbor.total_demand[period_index] += self.tkp_instance.orders[idx].demand;
+
+            if neighbor.total_demand[period_index] as u32 > self.tkp_instance.c {
+                neighbor.is_feasible = false;
+                break;
+            }
+        }
+
         neighbor
     }
 
@@ -157,32 +203,5 @@ impl TabuSearch {
         } else {
             self.generate_best_profit_pool(current_solution)
         }
-    }
-
-    fn is_feasible(&self, solution: &Solution) -> bool {
-        let mut total_demand = vec![
-            0;
-            (self
-                .tkp_instance
-                .orders
-                .iter()
-                .map(|o| o.end)
-                .max()
-                .unwrap_or(0)
-                + 1) as usize
-        ];
-
-        for (i, selected) in solution.selected_orders.iter().enumerate() {
-            if *selected {
-                let order = &self.tkp_instance.orders[i];
-                for t in order.start..=order.end {
-                    total_demand[t as usize] += order.demand;
-                    if total_demand[t as usize] > self.tkp_instance.c {
-                        return false; // Infeasible solution
-                    }
-                }
-            }
-        }
-        true
     }
 }
