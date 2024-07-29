@@ -31,6 +31,8 @@ struct TabuSearch {
     pub cost_benefit: BTreeMap<u32, usize>,
     pub selected_for_profit_pool: Vec<usize>,
     pub selected_for_slack_fill: Vec<usize>,
+    pub disable_cost_benefit: bool,
+    pub disable_slack_fill: bool,
 }
 
 impl TkpInstance {
@@ -39,10 +41,25 @@ impl TkpInstance {
         iterations: usize,
         tabu_list_size: usize,
         neighborhood_size: usize,
+        disable_cost_benefit: bool,
+        disable_slack_fill: bool,
     ) -> Solution {
+        let instant = std::time::Instant::now();
         let cloned = self.clone();
         let mut tabu_search = TabuSearch::new(tabu_list_size, neighborhood_size, cloned);
-        tabu_search.tabu_search(iterations)
+        let result = tabu_search.tabu_search(iterations);
+        println!(
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}ms",
+            self.name,
+            iterations,
+            tabu_list_size,
+            neighborhood_size,
+            disable_cost_benefit as u8,
+            disable_slack_fill as u8,
+            result.total_profit,
+            instant.elapsed().as_millis()
+        );
+        result
     }
 }
 
@@ -64,6 +81,8 @@ impl TabuSearch {
             neighborhood_size,
             selected_for_profit_pool: Vec::new(),
             selected_for_slack_fill: Vec::new(),
+            disable_cost_benefit: false,
+            disable_slack_fill: false,
         }
     }
 
@@ -174,7 +193,7 @@ impl TabuSearch {
 
     // heuristica: gera vizinhança de soluções levando em consideração
     // a maior quantidade de capacide livre preenchida
-    fn generate_best_profit_slack_fill(&mut self, current_solution: &Solution) -> Solution {
+    fn generate_slack_fill(&mut self, current_solution: &Solution) -> Solution {
         let slack = current_solution
             .total_demand
             .iter()
@@ -294,12 +313,33 @@ impl TabuSearch {
     }
 
     fn generate_neighbor(&mut self, current_solution: &Solution) -> Solution {
-        let random_strategy = self.tkp_instance.rng.gen_range(0..=2);
+        if self.disable_cost_benefit {
+            let random_strategy = self.tkp_instance.rng.gen_range(0..=1);
+            return match random_strategy {
+                0 => self.generate_random_neighbor(current_solution),
+                1 => self.generate_slack_fill(current_solution),
+                _ => unreachable!(),
+            };
+        }
 
+        if self.disable_slack_fill {
+            let random_strategy = self.tkp_instance.rng.gen_range(0..=1);
+            return match random_strategy {
+                0 => self.generate_random_neighbor(current_solution),
+                1 => self.generate_best_profit_pool(current_solution),
+                _ => unreachable!(),
+            };
+        }
+
+        if self.disable_cost_benefit && self.disable_slack_fill {
+            return self.generate_random_neighbor(current_solution);
+        }
+
+        let random_strategy = self.tkp_instance.rng.gen_range(0..=2);
         match random_strategy {
             0 => self.generate_random_neighbor(current_solution),
             1 => self.generate_best_profit_pool(current_solution),
-            2 => self.generate_best_profit_slack_fill(current_solution),
+            2 => self.generate_slack_fill(current_solution),
             _ => unreachable!(),
         }
     }
