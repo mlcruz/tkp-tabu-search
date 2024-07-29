@@ -252,7 +252,8 @@ impl TabuSearch {
             neighbor.selected_orders[idx] = false;
             neighbor.total_profit =
                 current_solution.total_profit - self.tkp_instance.orders[idx].profit as u32;
-            return neighbor;
+
+            return self.update_neighbor_total_demand(neighbor, idx, false, true);
         }
 
         // se deselecionado, seleciona e calcula lucro total
@@ -260,7 +261,7 @@ impl TabuSearch {
         neighbor.total_profit =
             current_solution.total_profit + self.tkp_instance.orders[idx].profit as u32;
 
-        self.update_neighbor_total_demand(neighbor, idx, false, true)
+        self.update_neighbor_total_demand(neighbor, idx, false, false)
     }
 
     fn update_neighbor_total_demand(
@@ -282,7 +283,6 @@ impl TabuSearch {
             }
             if neighbor.total_demand[period_index] as u32 > self.tkp_instance.c {
                 neighbor.is_feasible = false;
-                break;
             }
         }
 
