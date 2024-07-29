@@ -81,11 +81,6 @@ impl TabuSearch {
         self.tabu_set.insert(solution);
     }
 
-    pub fn clear_selected(&mut self) {
-        self.selected_for_profit_pool.clear();
-        self.selected_for_slack_fill.clear();
-    }
-
     pub fn tabu_search(&mut self, iterations: usize) -> Solution {
         let last_order_end = self
             .tkp_instance
@@ -119,7 +114,9 @@ impl TabuSearch {
                 }
                 self.add_to_tabu_list(current_solution.clone());
             }
-            self.clear_selected();
+
+            self.selected_for_profit_pool.clear();
+            self.selected_for_slack_fill.clear();
         }
 
         best_solution
@@ -135,7 +132,6 @@ impl TabuSearch {
             .filter(|(_, idx)| {
                 !current_solution.selected_orders[**idx]
                     && !self.selected_for_profit_pool.contains(idx)
-                    && !self.selected_for_slack_fill.contains(idx)
             })
             .filter(|(_, idx)| {
                 // seleciona apenas ordens que não ultrapassam a capacidade
@@ -161,7 +157,7 @@ impl TabuSearch {
             .choose(&mut self.tkp_instance.rng);
 
         if selected.is_none() {
-            return self.generate_random_neighbor(current_solution, 0);
+            return self.generate_random_neighbor(current_solution);
         }
 
         let selected_idx = selected.unwrap();
@@ -173,7 +169,7 @@ impl TabuSearch {
         neighbor.selected_orders[*selected_idx] = true;
         neighbor.total_profit += self.tkp_instance.orders[*selected_idx].profit as u32;
 
-        self.update_neighbor_total_demand(neighbor, *selected_idx, true)
+        self.update_neighbor_total_demand(neighbor, *selected_idx, true, false)
     }
 
     // heuristica: gera vizinhança de soluções levando em consideração
@@ -182,7 +178,7 @@ impl TabuSearch {
         let slack = current_solution
             .total_demand
             .iter()
-            .map(|x| (self.tkp_instance.c as i32) - *x as i32)
+            .map(|x| self.tkp_instance.c - x)
             .collect::<Vec<_>>();
 
         let mut orders_by_slack = self
@@ -193,7 +189,6 @@ impl TabuSearch {
             .filter(|(idx, _)| {
                 !current_solution.selected_orders[*idx]
                     && !self.selected_for_slack_fill.contains(idx)
-                    && !self.selected_for_profit_pool.contains(idx)
             })
             .filter(|(idx, _)| {
                 // seleciona apenas ordens que não ultrapassam a capacidade
@@ -214,11 +209,9 @@ impl TabuSearch {
                 is_feasible
             })
             .map(|(i, x)| {
-                let total_order_slack_fill: u32 = (x.start..=x.end)
+                let total_order_slack_fill = (x.start..=x.end)
                     .map(|t| slack[(t - 1) as usize])
-                    .sum::<i32>()
-                    .try_into()
-                    .unwrap();
+                    .sum::<u32>();
 
                 (i, total_order_slack_fill)
             })
@@ -233,7 +226,7 @@ impl TabuSearch {
             .choose(&mut self.tkp_instance.rng);
 
         if selected.is_none() {
-            return self.generate_random_neighbor(current_solution, 0);
+            return self.generate_random_neighbor(current_solution);
         }
 
         let selected_idx = selected.unwrap().0;
@@ -244,89 +237,30 @@ impl TabuSearch {
 
         neighbor.selected_orders[selected_idx] = true;
         neighbor.total_profit += self.tkp_instance.orders[selected_idx].profit as u32;
-        self.update_neighbor_total_demand(neighbor, selected_idx, true)
+        self.update_neighbor_total_demand(neighbor, selected_idx, true, false)
     }
 
-    fn generate_random_neighbor(&mut self, current_solution: &Solution, depth: usize) -> Solution {
+    fn generate_random_neighbor(&mut self, current_solution: &Solution) -> Solution {
         let mut neighbor = current_solution.clone();
+        let idx = self
+            .tkp_instance
+            .rng
+            .gen_range(0..self.tkp_instance.orders.len());
 
-        neighbor.is_feasible = true;
-
-        for _ in 0..=(depth + 1).max(5) {
-            let should_add = self
-                .tkp_instance
-                .rng
-                .gen_bool((1 as f64 / (depth as f64 + 1.0)) as f64);
-
-            if should_add {
-                let idx = (0..self.tkp_instance.orders.len())
-                    .filter(|idx| !neighbor.selected_orders[*idx])
-                    .choose(&mut self.tkp_instance.rng);
-
-                if idx.is_none() {
-                    // todos selecionados, continua
-                    continue;
-                }
-
-                let idx = idx.unwrap();
-
-                // seleciona e calcula lucro total
-                neighbor.selected_orders[idx] = true;
-                neighbor.total_profit =
-                    neighbor.total_profit + self.tkp_instance.orders[idx].profit as u32;
-
-                // atualiza demanda total
-                for t in self.tkp_instance.orders[idx].start..=self.tkp_instance.orders[idx].end {
-                    let period_index = (t - 1) as usize;
-
-                    let last_demand = neighbor.total_demand[period_index];
-
-                    neighbor.total_demand[period_index] += self.tkp_instance.orders[idx].demand;
-
-                    assert_eq!(
-                        last_demand + self.tkp_instance.orders[idx].demand,
-                        neighbor.total_demand[period_index]
-                    );
-
-                    if neighbor.total_demand[period_index] as u32 > self.tkp_instance.c {
-                        neighbor.is_feasible = false;
-                    }
-                }
-            } else {
-                let idx = (0..self.tkp_instance.orders.len())
-                    .filter(|idx| neighbor.selected_orders[*idx])
-                    .choose(&mut self.tkp_instance.rng);
-
-                if idx.is_none() {
-                    // todos deselecionados, continua
-                    continue;
-                }
-
-                let idx = idx.unwrap();
-
-                // deseleciona e calcula lucro total
-                neighbor.selected_orders[idx] = false;
-                neighbor.total_profit =
-                    neighbor.total_profit - self.tkp_instance.orders[idx].profit as u32;
-
-                // atualiza demanda total
-                for t in self.tkp_instance.orders[idx].start..=self.tkp_instance.orders[idx].end {
-                    let period_index = (t - 1) as usize;
-
-                    neighbor.total_demand[period_index] -= self.tkp_instance.orders[idx].demand;
-
-                    if neighbor.total_demand[period_index] as u32 > self.tkp_instance.c {
-                        neighbor.is_feasible = false;
-                    }
-                }
-            }
+        // se selecionado, deseleciona e calcula lucro total
+        if neighbor.selected_orders[idx] {
+            neighbor.selected_orders[idx] = false;
+            neighbor.total_profit =
+                current_solution.total_profit - self.tkp_instance.orders[idx].profit as u32;
+            return neighbor;
         }
 
-        if neighbor.is_feasible {
-            neighbor
-        } else {
-            self.generate_random_neighbor(&neighbor, depth + 1)
-        }
+        // se deselecionado, seleciona e calcula lucro total
+        neighbor.selected_orders[idx] = true;
+        neighbor.total_profit =
+            current_solution.total_profit + self.tkp_instance.orders[idx].profit as u32;
+
+        self.update_neighbor_total_demand(neighbor, idx, false, true)
     }
 
     fn update_neighbor_total_demand(
@@ -334,16 +268,21 @@ impl TabuSearch {
         mut neighbor: Solution,
         idx: usize,
         should_be_feasible: bool,
+        subtract: bool,
     ) -> Solution {
         neighbor.is_feasible = true;
 
         for t in self.tkp_instance.orders[idx].start..=self.tkp_instance.orders[idx].end {
             let period_index = (t - 1) as usize;
 
-            neighbor.total_demand[period_index] += self.tkp_instance.orders[idx].demand;
-
+            if subtract {
+                neighbor.total_demand[period_index] -= self.tkp_instance.orders[idx].demand;
+            } else {
+                neighbor.total_demand[period_index] += self.tkp_instance.orders[idx].demand;
+            }
             if neighbor.total_demand[period_index] as u32 > self.tkp_instance.c {
                 neighbor.is_feasible = false;
+                break;
             }
         }
 
@@ -355,12 +294,12 @@ impl TabuSearch {
     }
 
     fn generate_neighbor(&mut self, current_solution: &Solution) -> Solution {
-        let random_strategy = self.tkp_instance.rng.gen_range(0..=0);
+        let random_strategy = self.tkp_instance.rng.gen_range(0..=2);
 
         match random_strategy {
-            0 => self.generate_random_neighbor(current_solution, 0),
+            0 => self.generate_random_neighbor(current_solution),
             1 => self.generate_best_profit_pool(current_solution),
-            //   2 => self.generate_best_profit_slack_fill(current_solution),
+            2 => self.generate_best_profit_slack_fill(current_solution),
             _ => unreachable!(),
         }
     }
