@@ -40,8 +40,7 @@ impl TkpInstance {
                 continue;
             }
 
-            // o bound maximo poderia ser ou a capacidade de t, ou a soma
-            // das demandas das ordens ativas em t.
+            // o bound maximo é a capacidade de c
             pb.add_row(0f64..=self.c as f64, interval_orders)
         }
 
@@ -55,7 +54,10 @@ impl TkpInstance {
 
         // usar o solver simplex é significativamente mais rapido
         model.set_option("presolve", "on");
-        model.set_option("solver", "simplex");
+
+        if self.orders.len() > 1000 {
+            model.set_option("solver", "simplex");
+        }
         model.set_option("parallel", "on");
 
         let solved = model.solve();

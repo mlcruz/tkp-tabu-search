@@ -19,7 +19,7 @@ fn main() {
 
         now = std::time::Instant::now();
 
-        let tabu_solution = instance.tabu_search(20000, 10, 20);
+        let tabu_solution = instance.tabu_search(1000, 20, 10);
 
         println!(
             "{}: TABU: {}, time:{}ms",
