@@ -36,12 +36,12 @@ impl TkpInstance {
                 .map(|(_, demand)| demand)
                 .sum::<f64>();
 
-            if interval_orders.is_empty() || self.c as f64 >= sum_demands {
+            if interval_orders.is_empty() || self.capacity as f64 >= sum_demands {
                 continue;
             }
 
             // o bound maximo é a capacidade de c
-            pb.add_row(0f64..=self.c as f64, interval_orders)
+            pb.add_row(0f64..=self.capacity as f64, interval_orders)
         }
 
         println!(

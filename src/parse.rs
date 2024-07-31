@@ -8,8 +8,8 @@ use rand::SeedableRng;
 
 #[derive(Debug, Clone)]
 pub struct TkpInstance {
-    pub n: usize,
-    pub c: u32,
+    pub order_count: usize,
+    pub capacity: u32,
     pub orders: Vec<Order>,
     pub name: String,
     pub rng: rand::rngs::StdRng,
@@ -52,8 +52,8 @@ impl TkpInstance {
             .collect::<Vec<_>>();
 
         TkpInstance {
-            n: n.try_into().unwrap(),
-            c,
+            order_count: n.try_into().unwrap(),
+            capacity: c,
             orders,
             name: path.file_stem().unwrap().to_str().unwrap().to_string(),
             rng: rand::rngs::StdRng::seed_from_u64(seed),

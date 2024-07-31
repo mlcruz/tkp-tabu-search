@@ -1,5 +1,8 @@
 use rand::{seq::IteratorRandom, Rng};
-use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::{
+    collections::{BTreeMap, HashSet, VecDeque},
+    time::Instant,
+};
 
 use crate::parse::TkpInstance;
 
@@ -101,6 +104,9 @@ impl TabuSearch {
     }
 
     pub fn tabu_search(&mut self, iterations: usize) -> Solution {
+        let now = Instant::now();
+
+        // Descobre quando ultimo pedido termina
         let last_order_end = self
             .tkp_instance
             .orders
@@ -114,24 +120,50 @@ impl TabuSearch {
         let mut current_solution = best_solution.clone();
 
         for _ in 0..iterations {
+            // Gera vizinhança de soluções
             let neighbors: Vec<Solution> = (0..self.neighborhood_size)
                 .map(|_| self.generate_neighbor(&current_solution))
                 .collect();
 
+            // lista de soluçoes viáveis fora da lista tabu
             let feasible_neighbors: Vec<Solution> = neighbors
                 .into_iter()
                 .filter(|neighbor| !self.is_tabu(neighbor) && neighbor.is_feasible)
                 .collect();
 
+            // Caso tenha solução viável, seleciona a melhor e possivelmente
+            // adiciona na lista tabu
             if let Some(best_neighbor) = feasible_neighbors
                 .into_iter()
                 .max_by_key(|neighbor| neighbor.total_profit)
             {
                 current_solution = best_neighbor.clone();
                 if current_solution.total_profit > best_solution.total_profit {
+                    if std::env::var("IGNORE_BEST").is_err() {
+                        println!(
+                            "{}ms - Nova melhor solução: {} [{}... (+{})]",
+                            now.elapsed().as_millis(),
+                            current_solution.total_profit,
+                            current_solution
+                                .selected_orders
+                                .iter()
+                                .enumerate()
+                                .filter(|(_, x)| **x)
+                                .map(|(i, _)| i.to_string())
+                                .take(15)
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                            (best_solution.selected_orders.iter().filter(|x| **x).count() - 10)
+                                .max(0)
+                        );
+                    }
+
                     best_solution = current_solution.clone();
                 }
-                self.add_to_tabu_list(current_solution.clone());
+
+                if !self.aspiration_criterion(&current_solution, &best_solution) {
+                    self.add_to_tabu_list(current_solution.clone());
+                }
             }
 
             self.selected_for_profit_pool.clear();
@@ -139,6 +171,15 @@ impl TabuSearch {
         }
 
         best_solution
+    }
+
+    // não adiciona a lista tabu caso nosso profit aumente mais que 5
+    fn aspiration_criterion(&self, solution: &Solution, best_solution: &Solution) -> bool {
+        if solution.total_profit > best_solution.total_profit {
+            return solution.total_profit - best_solution.total_profit > 50;
+        }
+
+        false
     }
 
     // heuristica: gera vizinhança de soluções levando em consideração
@@ -161,7 +202,7 @@ impl TabuSearch {
                     let period_index = (t - 1) as usize;
 
                     if current_solution.total_demand[period_index] + order.demand
-                        > self.tkp_instance.c
+                        > self.tkp_instance.capacity
                     {
                         is_feasible = false;
                         break;
@@ -197,7 +238,7 @@ impl TabuSearch {
         let slack = current_solution
             .total_demand
             .iter()
-            .map(|x| self.tkp_instance.c - x)
+            .map(|x| self.tkp_instance.capacity - x)
             .collect::<Vec<_>>();
 
         let mut orders_by_slack = self
@@ -218,7 +259,7 @@ impl TabuSearch {
                     let period_index = (t - 1) as usize;
 
                     if current_solution.total_demand[period_index] + order.demand
-                        > self.tkp_instance.c
+                        > self.tkp_instance.capacity
                     {
                         is_feasible = false;
                         break;
@@ -300,7 +341,7 @@ impl TabuSearch {
             } else {
                 neighbor.total_demand[period_index] += self.tkp_instance.orders[idx].demand;
             }
-            if neighbor.total_demand[period_index] as u32 > self.tkp_instance.c {
+            if neighbor.total_demand[period_index] as u32 > self.tkp_instance.capacity {
                 neighbor.is_feasible = false;
             }
         }
