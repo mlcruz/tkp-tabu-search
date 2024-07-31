@@ -21,27 +21,23 @@ fn main() {
 }
 
 fn tabu_scenarios(instance: TkpInstance) {
-    println!("{}\titerations\ttabu_list_size\tneighborhood_size\tdisable_cost_benefit\tdisable_slack_fill\ttotal_profit\ttime", instance.name);
+    println!("name,seed,iterations,tabu_list_size,neighborhood_size,total_profit,time");
 
-    let iterations = [3000, 10000];
-    let slack_fill = [true];
-    let cost_benefit = [true];
-    let tabu_list_size = [0, 20, 50];
-    let neighborhood_size = [10, 30, 50];
+    let iterations = [5000, 20000];
+    let random_seeds = [rand::random::<u64>(), rand::random::<u64>()];
+    let tabu_list_size = [10, 50];
+    let neighborhood_size = [10, 50];
 
     for iterations in iterations.iter() {
-        for slack_fill in slack_fill.iter() {
-            for cost_benefit in cost_benefit.iter() {
-                for tabu_list_size in tabu_list_size.iter() {
-                    for neighborhood_size in neighborhood_size.iter() {
-                        instance.tabu_search(
-                            *iterations,
-                            *tabu_list_size,
-                            *neighborhood_size,
-                            *cost_benefit,
-                            *slack_fill,
-                        );
-                    }
+        for random_seed in random_seeds.iter() {
+            for tabu_list_size in tabu_list_size.iter() {
+                for neighborhood_size in neighborhood_size.iter() {
+                    instance.tabu_search(
+                        *iterations,
+                        *tabu_list_size,
+                        *neighborhood_size,
+                        *random_seed,
+                    );
                 }
             }
         }

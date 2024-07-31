@@ -1,4 +1,4 @@
-use rand::{seq::IteratorRandom, Rng};
+use rand::{seq::IteratorRandom, Rng, SeedableRng};
 use std::{
     collections::{BTreeMap, HashSet, VecDeque},
     time::Instant,
@@ -44,21 +44,22 @@ impl TkpInstance {
         iterations: usize,
         tabu_list_size: usize,
         neighborhood_size: usize,
-        disable_cost_benefit: bool,
-        disable_slack_fill: bool,
+        random_seed: u64,
     ) -> Solution {
         let instant = std::time::Instant::now();
-        let cloned = self.clone();
+        let cloned = TkpInstance {
+            rng: rand::rngs::StdRng::seed_from_u64(random_seed),
+            ..self.clone()
+        };
         let mut tabu_search = TabuSearch::new(tabu_list_size, neighborhood_size, cloned);
         let result = tabu_search.tabu_search(iterations);
         println!(
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}ms",
+            "{},{},{},{},{},{},{}ms",
             self.name,
+            random_seed,
             iterations,
             tabu_list_size,
             neighborhood_size,
-            disable_cost_benefit as u8,
-            disable_slack_fill as u8,
             result.total_profit,
             instant.elapsed().as_millis()
         );
