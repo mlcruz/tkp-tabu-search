@@ -8,15 +8,15 @@ fn main() {
     let instances =
         parse::TkpInstance::parse_instance_folder(std::path::Path::new("tkp_instances"), seed);
 
+    let now = std::time::Instant::now();
     for instance in instances {
-        //let higgs_solution = instance.higgs_solve();
-        // println!(
-        //     "{}: HIGHS: {}, time: {}ms",
-        //     instance.name,
-        //     higgs_solution,
-        //     now.elapsed().as_millis()
-        // );
-        tabu_scenarios(instance)
+        let higgs_solution = instance.higgs_solve();
+        println!(
+            "{},{},{}",
+            instance.name,
+            higgs_solution,
+            now.elapsed().as_millis()
+        );
     }
 }
 
