@@ -3,7 +3,7 @@ use highs::{HighsModelStatus, RowProblem, Sense};
 use crate::parse::TkpInstance;
 
 impl TkpInstance {
-    pub fn higgs_solve(&self) -> i32 {
+    pub fn highs_solve(&self) -> i32 {
         let mut pb = RowProblem::default();
 
         // X representa uma variavel binaria representando se uma ordem é escolhida ou não
@@ -18,7 +18,7 @@ impl TkpInstance {
         let final_time = self.orders.iter().map(|o| o.end).max().unwrap_or(0);
 
         // Para cada segundo do intervalo total
-        // a soma das demandas das ordens selecionadas devem ser menor ou igual a capacidade
+        // a soma das demandas dos pedidos selecionados devem ser menor ou igual a capacidade
         for t in 0..=final_time {
             // ordens que estao ativas em t, zipadas com suas respectivas variaveis de seleção
             let interval_orders: Vec<_> = self
@@ -29,7 +29,7 @@ impl TkpInstance {
                 .map(|(order, x)| (*x, order.demand as f64))
                 .collect();
 
-            // se a some das demandas das ordens ativas em t for menor ou igual a capacidade
+            // se a some das demandas dos pedidos ativos em t for menor ou igual a capacidade
             // não precisamos de restrição (todas as variaveis podem estar ligadas)
             let sum_demands = interval_orders
                 .iter()
@@ -40,7 +40,8 @@ impl TkpInstance {
                 continue;
             }
 
-            // o bound maximo é a capacidade de c
+            // Adicionamos a restrição, representada com um vetor de
+            // pares (Xp * d(p)) a serem somados
             pb.add_row(0f64..=self.capacity as f64, interval_orders)
         }
 
@@ -55,8 +56,13 @@ impl TkpInstance {
         // usar o solver simplex é significativamente mais rapido
         model.set_option("presolve", "on");
 
-        model.set_option("solver", "simplex");
+        if self.orders.len() > 1000 {
+            model.set_option("solver", "simplex");
+        }
         model.set_option("parallel", "on");
+
+        // config seed rng
+        model.set_option("random_seed", &*self.rng.to_string());
 
         let solved = model.solve();
 
@@ -75,7 +81,7 @@ impl TkpInstance {
         )
         .unwrap();
 
-        // calcula o valor da solução, somand o lucro das ordens selecionadas
+        // calcula o valor da solução, somand o lucro dos pedidos selecionadas
         let objective_value: i32 = solution
             .columns()
             .iter()
